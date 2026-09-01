@@ -76,7 +76,7 @@ def analyze():
         if not api_key:
             return jsonify({"error": "GEMINI_API_KEY is missing in Render environment"}), 500
 
-        model = genai.GenerativeModel('models/gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(user_text)
         
         return jsonify({"result": response.text})
