@@ -2,7 +2,7 @@ import os
 from flask import Flask, render_template, request, jsonify
 import google.generativeai as genai
 
-app = Flask(_name_)
+app = Flask(__name__)
 
 # Configure API Key
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -32,5 +32,5 @@ def analyze():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if _name_ == '_main_':
+if __name__ == '+_main__':
     app.run(host='0.0.0.0', port=10000)
