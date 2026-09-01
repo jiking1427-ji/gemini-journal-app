@@ -63,5 +63,5 @@ def analyze():
     response = model.generate_content(f"Analyze this journal entry and provide a thoughtful reflection: {user_text}")
     return jsonify({"result": response.text})
 
-if _name_ == '_main_':
+if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
