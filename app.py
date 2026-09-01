@@ -59,7 +59,7 @@ def analyze():
     if not api_key:
         return jsonify({"result": "API Key configured இல்லை!"})
 
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-1.5-flash')
     response = model.generate_content(f"Analyze this journal entry and provide a thoughtful reflection: {user_text}")
     return jsonify({"result": response.text})
 
