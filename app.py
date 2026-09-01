@@ -2,7 +2,7 @@ import os
 from flask import Flask, render_template_string, request, jsonify
 import google.generativeai as genai
 
-app = Flask(_name_)
+app = Flask(__name__)
 
 # Environment Variable-ல் இருந்து API Key எடுத்தல்
 api_key = os.environ.get("GEMINI_API_KEY")
