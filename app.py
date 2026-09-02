@@ -16,7 +16,10 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Personal AI Journal</title>
+    <title>Ji Web Assistant</title>
+    <meta name="description" content="Ji Web Assistant - Fast and Smart AI Companion for Students.">
+    <meta name="keywords" content="Ji Web Assistant, Student AI, Tamil AI Assistant">
+    <meta name="author" content="Balaji">
     <style>
         body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
         textarea { width: 100%; height: 120px; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc; }
