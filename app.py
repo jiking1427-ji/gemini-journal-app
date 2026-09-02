@@ -1,11 +1,11 @@
-import base64
 import os
+import base64
 from flask import Flask, jsonify, render_template_string, request
 from google import genai
 
 app = Flask(__name__)
 
-# புதிய Google GenAI SDK
+# Google GenAI Client setup
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 HTML_TEMPLATE = """
@@ -19,7 +19,7 @@ HTML_TEMPLATE = """
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { display: flex; height: 100vh; background-color: #1e1e2f; color: #fff; }
         
-        /* Sidebar Design */
+        /* Sidebar */
         #sidebar { width: 260px; background: #141423; display: flex; flex-direction: column; padding: 15px; border-right: 1px solid #2d2d42; }
         #sidebar h2 { font-size: 1.1rem; margin-bottom: 15px; color: #a2a2c2; text-align: center; }
         .new-chat-btn { padding: 10px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 15px; }
@@ -41,34 +41,27 @@ HTML_TEMPLATE = """
         .action-btns { display: flex; gap: 10px; margin-top: 8px; }
         .action-btn { font-size: 0.75rem; background: none; border: none; color: #8888b0; cursor: pointer; text-decoration: underline; }
 
-        /* Input Bar */
+        /* Input Area */
         #input-container { padding: 15px; background: #181828; display: flex; gap: 10px; border-top: 1px solid #2d2d42; align-items: center; }
         textarea { flex: 1; height: 45px; background: #252538; border: 1px solid #3b3b54; border-radius: 6px; padding: 10px; color: white; resize: none; outline: none; }
         .icon-btn { width: 45px; height: 45px; background: #28a745; color: white; border: none; border-radius: 6px; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        button.send-btn { width: 70px; height: 45px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        button.send-btn { width: 90px; height: 45px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
         button.send-btn:hover { background: #0056b3; }
-        button.recording { background: #dc3545; animation: pulse 1s infinite; }
-        #imagePreviewContainer { position: relative; display: none; }
-        #imagePreview { width: 45px; height: 45px; border-radius: 6px; object-fit: cover; }
-        #removeImg { position: absolute; top: -5px; right: -5px; background: red; color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; cursor: pointer; }
-
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
+        button.recording { background: #dc3545; }
+        
+        #preview-box { position: relative; display: none; }
+        #preview-img { width: 45px; height: 45px; border-radius: 6px; object-fit: cover; }
+        #remove-img { position: absolute; top: -5px; right: -5px; background: red; color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-    <!-- Sidebar -->
     <div id="sidebar">
         <h2>Ji Web Assistant</h2>
         <button class="new-chat-btn" onclick="startNewChat()">+ New Chat</button>
         <ul class="history-list" id="historyList"></ul>
     </div>
 
-    <!-- Main Content Area -->
     <div id="main">
         <div id="header">
             <h3>Ji Web Assistant AI</h3>
@@ -77,38 +70,34 @@ HTML_TEMPLATE = """
         <div id="chat-box"></div>
 
         <div id="input-container">
-            <!-- Image Upload Option -->
-            <input type="file" id="imageInput" accept="image/*" style="display: none;" onchange="previewSelectedImage(event)">
+            <input type="file" id="imageInput" accept="image/*" style="display: none;" onchange="handleImageSelect(event)">
             <button class="icon-btn" onclick="document.getElementById('imageInput').click()" title="Attach Image">📷</button>
             
-            <div id="imagePreviewContainer">
-                <img id="imagePreview" src="" alt="Preview">
-                <button id="removeImg" onclick="clearSelectedImage()">✕</button>
+            <div id="preview-box">
+                <img id="preview-img" src="" alt="Preview">
+                <button id="remove-img" onclick="clearImage()">✕</button>
             </div>
 
-            <!-- Mic Option -->
-            <button class="icon-btn" id="micBtn" onclick="toggleVoiceInput()" title="Speak">🎙️</button>
+            <button class="icon-btn" id="micBtn" onclick="toggleVoice()" title="Speak">🎙️</button>
             
-            <textarea id="userInput" placeholder="Ask anything or upload photo..."></textarea>
-            <button class="send-btn" onclick="sendMessage()">Send</button>
+            <textarea id="userInput" placeholder="Ask anything..."></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
         </div>
     </div>
 
     <script>
+    {% raw %}
         let currentChatId = Date.now();
         let chats = JSON.parse(localStorage.getItem('ji_chats')) || {};
+        let selectedBase64Image = null;
         let recognition = null;
         let isRecording = false;
-        let selectedBase64Image = null;
 
-        // Voice Input Initialization
+        // Voice Setup
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new SpeechRecognition();
-            recognition.continuous = false;
-            recognition.interimResults = false;
+            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRec();
             recognition.lang = 'ta-IN';
-
             recognition.onresult = function(event) {
                 document.getElementById('userInput').value = event.results[0][0].transcript;
                 stopRecording();
@@ -117,8 +106,8 @@ HTML_TEMPLATE = """
             recognition.onend = function() { stopRecording(); };
         }
 
-        function toggleVoiceInput() {
-            if (!recognition) return alert('Voice input is not supported in this browser.');
+        function toggleVoice() {
+            if (!recognition) return alert('Voice input not supported on this browser.');
             if (isRecording) {
                 recognition.stop();
                 stopRecording();
@@ -147,24 +136,23 @@ HTML_TEMPLATE = """
             }
         }
 
-        // Image Handling
-        function previewSelectedImage(event) {
-            const file = event.target.files[0];
+        function handleImageSelect(e) {
+            const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = function(e) {
-                    selectedBase64Image = e.target.result.split(',')[1];
-                    document.getElementById('imagePreview').src = e.target.result;
-                    document.getElementById('imagePreviewContainer').style.display = 'block';
+                reader.onload = function(evt) {
+                    selectedBase64Image = evt.target.result.split(',')[1];
+                    document.getElementById('preview-img').src = evt.target.result;
+                    document.getElementById('preview-box').style.display = 'block';
                 };
                 reader.readAsDataURL(file);
             }
         }
 
-        function clearSelectedImage() {
+        function clearImage() {
             selectedBase64Image = null;
             document.getElementById('imageInput').value = '';
-            document.getElementById('imagePreviewContainer').style.display = 'none';
+            document.getElementById('preview-box').style.display = 'none';
         }
 
         function saveChats() {
@@ -193,12 +181,14 @@ HTML_TEMPLATE = """
             currentChatId = id;
             const chatBox = document.getElementById('chat-box');
             chatBox.innerHTML = '';
-            chats[id].messages.forEach(msg => appendMessage(msg.sender, msg.text, msg.image, false));
+            chats[id].messages.forEach(msg => appendMsg(msg.sender, msg.text, msg.image, false));
         }
 
         function startNewChat() {
             currentChatId = Date.now();
             document.getElementById('chat-box').innerHTML = '';
+            clearImage();
+            document.getElementById('userInput').value = '';
         }
 
         function togglePin(id, e) {
@@ -207,7 +197,7 @@ HTML_TEMPLATE = """
             saveChats();
         }
 
-        function shareMessage(text) {
+        function shareMsg(text) {
             if (navigator.share) {
                 navigator.share({ title: 'Ji Web Assistant', text: text });
             } else {
@@ -216,27 +206,27 @@ HTML_TEMPLATE = """
             }
         }
 
-        function appendMessage(sender, text, imageBase64 = null, save = true) {
+        function appendMsg(sender, text, imgBase64 = null, save = true) {
             const chatBox = document.getElementById('chat-box');
             const msgDiv = document.createElement('div');
             msgDiv.className = message ${sender === 'user' ? 'user-msg' : 'bot-msg'};
             
-            let html = '';
-            if (imageBase64) {
-                html += <img src="data:image/jpeg;base64,${imageBase64}" class="chat-img" />;
+            let contentHtml = '';
+            if (imgBase64) {
+                contentHtml += <img src="data:image/jpeg;base64,${imgBase64}" class="chat-img" />;
             }
-            html += <div>${text}</div>;
-            
+            contentHtml += <div>${text}</div>;
+
             if (sender === 'bot') {
                 const safeText = text.replace(/'/g, "\\'").replace(/\n/g, " ");
-                html += `
+                contentHtml += `
                 <div class="action-btns">
-                    <button class="action-btn" onclick="shareMessage('${safeText}')">Share</button>
+                    <button class="action-btn" onclick="shareMsg('${safeText}')">Share</button>
                     <button class="action-btn" onclick="speakText('${safeText}')">🔊 Listen</button>
                 </div>`;
             }
-            msgDiv.innerHTML = html;
-            
+
+            msgDiv.innerHTML = contentHtml;
             chatBox.appendChild(msgDiv);
             chatBox.scrollTop = chatBox.scrollHeight;
 
@@ -244,21 +234,25 @@ HTML_TEMPLATE = """
                 if (!chats[currentChatId]) {
                     chats[currentChatId] = { title: text || "Image Analysis", messages: [], pinned: false };
                 }
-                chats[currentChatId].messages.push({ sender, text, image: imageBase64 });
+                chats[currentChatId].messages.push({ sender, text, image: imgBase64 });
                 saveChats();
             }
         }
 
         async function sendMessage() {
             const input = document.getElementById('userInput');
+            const sendBtn = document.getElementById('sendBtn');
             const prompt = input.value.trim();
             const imgData = selectedBase64Image;
 
             if (!prompt && !imgData) return;
 
-            appendMessage('user', prompt, imgData);
+            appendMsg('user', prompt, imgData);
             input.value = '';
-            clearSelectedImage();
+            clearImage();
+
+            sendBtn.innerText = 'Wait...';
+            sendBtn.disabled = true;
 
             try {
                 const response = await fetch('/generate', {
@@ -268,16 +262,20 @@ HTML_TEMPLATE = """
                 });
                 const data = await response.json();
                 if (data.response) {
-                    appendMessage('bot', data.response);
+                    appendMsg('bot', data.response);
                 } else {
-                    appendMessage('bot', 'Error: ' + (data.error || 'Server error'));
+                    appendMsg('bot', 'Error: ' + (data.error || 'Server error'));
                 }
             } catch (err) {
-                appendMessage('bot', 'Error connecting to server.');
+                appendMsg('bot', 'Error connecting to server.');
+            } finally {
+                sendBtn.innerText = 'Send';
+                sendBtn.disabled = false;
             }
         }
 
         renderHistory();
+    {% endraw %}
     </script>
 </body>
 </html>
@@ -315,5 +313,5 @@ def generate():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__ == "__main__":
+if __name__== "__main__":
     app.run(host="0.0.0.0", port=5000)
