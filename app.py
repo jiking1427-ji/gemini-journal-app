@@ -21,21 +21,6 @@ HTML_TEMPLATE = """
     <meta name="author" content="Balaji">
     <meta name="theme-color" content="#1e1e2f">
     
-    <!-- PWA Support -->
-    <link rel="manifest" href="data:application/manifest+json,{% filter urlencode %}{
-        "name": "Ji Web Assistant",
-        "short_name": "Ji Assistant",
-        "start_url": "/",
-        "display": "standalone",
-        "background_color": "#1e1e2f",
-        "theme_color": "#1e1e2f",
-        "icons": [{
-            "src": "https://cdn-icons-png.flaticon.com/512/4712/4712035.png",
-            "sizes": "512x512",
-            "type": "image/png"
-        }]
-    }{% endfilter %}">
-
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { display: flex; height: 100vh; background-color: #1e1e2f; color: #fff; }
