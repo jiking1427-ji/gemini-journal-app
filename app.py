@@ -86,16 +86,15 @@ HTML_TEMPLATE = """
     </div>
 
     <script>
-    {% raw %}
-        let currentChatId = Date.now();
-        let chats = JSON.parse(localStorage.getItem('ji_chats')) || {};
-        let selectedBase64Image = null;
-        let recognition = null;
-        let isRecording = false;
+        var currentChatId = Date.now();
+        var chats = JSON.parse(localStorage.getItem('ji_chats')) || {};
+        var selectedBase64Image = null;
+        var recognition = null;
+        var isRecording = false;
 
         // Voice Setup
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+            var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SpeechRec();
             recognition.lang = 'ta-IN';
             recognition.onresult = function(event) {
@@ -114,7 +113,7 @@ HTML_TEMPLATE = """
             } else {
                 recognition.start();
                 isRecording = true;
-                const btn = document.getElementById('micBtn');
+                var btn = document.getElementById('micBtn');
                 btn.classList.add('recording');
                 btn.innerText = '🛑';
             }
@@ -122,7 +121,7 @@ HTML_TEMPLATE = """
 
         function stopRecording() {
             isRecording = false;
-            const btn = document.getElementById('micBtn');
+            var btn = document.getElementById('micBtn');
             btn.classList.remove('recording');
             btn.innerText = '🎙️';
         }
@@ -130,16 +129,16 @@ HTML_TEMPLATE = """
         function speakText(text) {
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(text);
+                var utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = 'ta-IN';
                 window.speechSynthesis.speak(utterance);
             }
         }
 
         function handleImageSelect(e) {
-            const file = e.target.files[0];
+            var file = e.target.files[0];
             if (file) {
-                const reader = new FileReader();
+                var reader = new FileReader();
                 reader.onload = function(evt) {
                     selectedBase64Image = evt.target.result.split(',')[1];
                     document.getElementById('preview-img').src = evt.target.result;
@@ -161,27 +160,30 @@ HTML_TEMPLATE = """
         }
 
         function renderHistory() {
-            const list = document.getElementById('historyList');
+            var list = document.getElementById('historyList');
             list.innerHTML = '';
-            const keys = Object.keys(chats).sort((a, b) => (chats[b].pinned || 0) - (chats[a].pinned || 0));
+            var keys = Object.keys(chats).sort(function(a, b) {
+                return (chats[b].pinned || 0) - (chats[a].pinned || 0);
+            });
 
-            keys.forEach(id => {
-                const li = document.createElement('li');
-                li.className = history-item ${chats[id].pinned ? 'pinned' : ''};
-                const title = chats[id].title || 'New Conversation';
-                li.innerHTML = `
-                    <span onclick="loadChat('${id}')">${title.substring(0, 18)}...</span>
-                    <button class="pin-btn" onclick="togglePin('${id}', event)">📌</button>
-                `;
+            keys.forEach(function(id) {
+                var li = document.createElement('li');
+                var isPinned = chats[id].pinned ? 'pinned' : '';
+                li.className = 'history-item ' + isPinned;
+                var title = chats[id].title || 'New Conversation';
+                li.innerHTML = '<span onclick="loadChat(\'' + id + '\')">' + title.substring(0, 18) + '...</span>' +
+                               '<button class="pin-btn" onclick="togglePin(\'' + id + '\', event)">📌</button>';
                 list.appendChild(li);
             });
         }
 
         function loadChat(id) {
             currentChatId = id;
-            const chatBox = document.getElementById('chat-box');
+            var chatBox = document.getElementById('chat-box');
             chatBox.innerHTML = '';
-            chats[id].messages.forEach(msg => appendMsg(msg.sender, msg.text, msg.image, false));
+            chats[id].messages.forEach(function(msg) {
+                appendMsg(msg.sender, msg.text, msg.image, false);
+            });
         }
 
         function startNewChat() {
@@ -206,24 +208,24 @@ HTML_TEMPLATE = """
             }
         }
 
-        function appendMsg(sender, text, imgBase64 = null, save = true) {
-            const chatBox = document.getElementById('chat-box');
-            const msgDiv = document.createElement('div');
-            msgDiv.className = message ${sender === 'user' ? 'user-msg' : 'bot-msg'};
+        function appendMsg(sender, text, imgBase64, save) {
+            if (save === undefined) save = true;
+            var chatBox = document.getElementById('chat-box');
+            var msgDiv = document.createElement('div');
+            msgDiv.className = 'message ' + (sender === 'user' ? 'user-msg' : 'bot-msg');
             
-            let contentHtml = '';
+            var contentHtml = '';
             if (imgBase64) {
-                contentHtml += <img src="data:image/jpeg;base64,${imgBase64}" class="chat-img" />;
+                contentHtml += '<img src="data:image/jpeg;base64,' + imgBase64 + '" class="chat-img" />';
             }
-            contentHtml += <div>${text}</div>;
+            contentHtml += '<div>' + text + '</div>';
 
             if (sender === 'bot') {
-                const safeText = text.replace(/'/g, "\\'").replace(/\n/g, " ");
-                contentHtml += `
-                <div class="action-btns">
-                    <button class="action-btn" onclick="shareMsg('${safeText}')">Share</button>
-                    <button class="action-btn" onclick="speakText('${safeText}')">🔊 Listen</button>
-                </div>`;
+                var safeText = text.replace(/'/g, "\\'").replace(/\n/g, " ");
+                contentHtml += '<div class="action-btns">' +
+                               '<button class="action-btn" onclick="shareMsg(\'' + safeText + '\')">Share</button>' +
+                               '<button class="action-btn" onclick="speakText(\'' + safeText + '\')">🔊 Listen</button>' +
+                               '</div>';
             }
 
             msgDiv.innerHTML = contentHtml;
@@ -234,16 +236,16 @@ HTML_TEMPLATE = """
                 if (!chats[currentChatId]) {
                     chats[currentChatId] = { title: text || "Image Analysis", messages: [], pinned: false };
                 }
-                chats[currentChatId].messages.push({ sender, text, image: imgBase64 });
+                chats[currentChatId].messages.push({ sender: sender, text: text, image: imgBase64 });
                 saveChats();
             }
         }
 
         async function sendMessage() {
-            const input = document.getElementById('userInput');
-            const sendBtn = document.getElementById('sendBtn');
-            const prompt = input.value.trim();
-            const imgData = selectedBase64Image;
+            var input = document.getElementById('userInput');
+            var sendBtn = document.getElementById('sendBtn');
+            var prompt = input.value.trim();
+            var imgData = selectedBase64Image;
 
             if (!prompt && !imgData) return;
 
@@ -255,12 +257,12 @@ HTML_TEMPLATE = """
             sendBtn.disabled = true;
 
             try {
-                const response = await fetch('/generate', {
+                var response = await fetch('/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ prompt: prompt, image: imgData })
                 });
-                const data = await response.json();
+                var data = await response.json();
                 if (data.response) {
                     appendMsg('bot', data.response);
                 } else {
@@ -275,7 +277,6 @@ HTML_TEMPLATE = """
         }
 
         renderHistory();
-    {% endraw %}
     </script>
 </body>
 </html>
@@ -313,5 +314,5 @@ def generate():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__== "__main__":
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
