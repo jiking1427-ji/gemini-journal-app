@@ -1,3 +1,4 @@
+import base64
 import os
 import google.generativeai as genai
 from flask import Flask, jsonify, render_template_string, request
@@ -18,6 +19,23 @@ HTML_TEMPLATE = """
     <meta name="description" content="Ji Web Assistant - Smart AI Companion for Students.">
     <meta name="keywords" content="Ji Web Assistant, Student AI, Tamil AI Assistant">
     <meta name="author" content="Balaji">
+    <meta name="theme-color" content="#1e1e2f">
+    
+    <!-- PWA Support -->
+    <link rel="manifest" href="data:application/manifest+json,{% filter urlencode %}{
+        "name": "Ji Web Assistant",
+        "short_name": "Ji Assistant",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#1e1e2f",
+        "theme_color": "#1e1e2f",
+        "icons": [{
+            "src": "https://cdn-icons-png.flaticon.com/512/4712/4712035.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }]
+    }{% endfilter %}">
+
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { display: flex; height: 100vh; background-color: #1e1e2f; color: #fff; }
@@ -40,13 +58,26 @@ HTML_TEMPLATE = """
         .message { max-width: 75%; padding: 12px 16px; border-radius: 12px; font-size: 0.95rem; line-height: 1.4; word-wrap: break-word; }
         .user-msg { align-self: flex-end; background: #007bff; color: white; border-bottom-right-radius: 2px; }
         .bot-msg { align-self: flex-start; background: #2c2c44; color: #e1e1e1; border-bottom-left-radius: 2px; }
-        .share-btn { font-size: 0.75rem; margin-top: 5px; background: none; border: none; color: #8888b0; cursor: pointer; text-decoration: underline; }
+        .chat-img { max-width: 100%; max-height: 200px; border-radius: 8px; margin-bottom: 8px; display: block; }
+        .action-btns { display: flex; gap: 10px; margin-top: 8px; }
+        .action-btn { font-size: 0.75rem; background: none; border: none; color: #8888b0; cursor: pointer; text-decoration: underline; }
 
         /* Input Bar */
-        #input-container { padding: 15px; background: #181828; display: flex; gap: 10px; border-top: 1px solid #2d2d42; }
+        #input-container { padding: 15px; background: #181828; display: flex; gap: 10px; border-top: 1px solid #2d2d42; align-items: center; }
         textarea { flex: 1; height: 45px; background: #252538; border: 1px solid #3b3b54; border-radius: 6px; padding: 10px; color: white; resize: none; outline: none; }
-        button.send-btn { width: 70px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .icon-btn { width: 45px; height: 45px; background: #28a745; color: white; border: none; border-radius: 6px; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        button.send-btn { width: 70px; height: 45px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
         button.send-btn:hover { background: #0056b3; }
+        button.recording { background: #dc3545; animation: pulse 1s infinite; }
+        #imagePreviewContainer { position: relative; display: none; }
+        #imagePreview { width: 45px; height: 45px; border-radius: 6px; object-fit: cover; }
+        #removeImg { position: absolute; top: -5px; right: -5px; background: red; color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; cursor: pointer; }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
     </style>
 </head>
 <body>
@@ -67,7 +98,19 @@ HTML_TEMPLATE = """
         <div id="chat-box"></div>
 
         <div id="input-container">
-            <textarea id="userInput" placeholder="Ask anything... (தமிழ் / English)"></textarea>
+            <!-- Image Input Button -->
+            <input type="file" id="imageInput" accept="image/*" style="display: none;" onchange="previewSelectedImage(event)">
+            <button class="icon-btn" onclick="document.getElementById('imageInput').click()" title="Attach Image">📷</button>
+            
+            <div id="imagePreviewContainer">
+                <img id="imagePreview" src="" alt="Preview">
+                <button id="removeImg" onclick="clearSelectedImage()">✕</button>
+            </div>
+
+            <!-- Voice Button -->
+            <button class="icon-btn" id="micBtn" onclick="toggleVoiceInput()" title="Speak">🎙️</button>
+            
+            <textarea id="userInput" placeholder="Ask anything or upload photo..."></textarea>
             <button class="send-btn" onclick="sendMessage()">Send</button>
         </div>
     </div>
@@ -75,6 +118,80 @@ HTML_TEMPLATE = """
     <script>
         let currentChatId = Date.now();
         let chats = JSON.parse(localStorage.getItem('ji_chats')) || {};
+        let recognition = null;
+        let isRecording = false;
+        let selectedBase64Image = null;
+
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('data:text/javascript,console.log("SW Registered");');
+        }
+
+        // Voice Recognition
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'ta-IN';
+
+            recognition.onresult = function(event) {
+                document.getElementById('userInput').value = event.results[0][0].transcript;
+                stopRecording();
+            };
+            recognition.onerror = function() { stopRecording(); };
+            recognition.onend = function() { stopRecording(); };
+        }
+
+        function toggleVoiceInput() {
+            if (!recognition) return alert('Voice input not supported in this browser.');
+            if (isRecording) {
+                recognition.stop();
+                stopRecording();
+            } else {
+                recognition.start();
+                isRecording = true;
+                const btn = document.getElementById('micBtn');
+                btn.classList.add('recording');
+                btn.innerText = '🛑';
+            }
+        }
+
+        function stopRecording() {
+            isRecording = false;
+            const btn = document.getElementById('micBtn');
+            btn.classList.remove('recording');
+            btn.innerText = '🎙️';
+        }
+
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ta-IN';
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // Image Handling
+        function previewSelectedImage(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    selectedBase64Image = e.target.result.split(',')[1];
+                    document.getElementById('imagePreview').src = e.target.result;
+                    document.getElementById('imagePreviewContainer').style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function clearSelectedImage() {
+            selectedBase64Image = null;
+            document.getElementById('imageInput').value = '';
+            document.getElementById('imagePreviewContainer').style.display = 'none';
+        }
 
         function saveChats() {
             localStorage.setItem('ji_chats', JSON.stringify(chats));
@@ -84,14 +201,11 @@ HTML_TEMPLATE = """
         function renderHistory() {
             const list = document.getElementById('historyList');
             list.innerHTML = '';
-            
-            // Sort: Pinned chats first
             const keys = Object.keys(chats).sort((a, b) => (chats[b].pinned || 0) - (chats[a].pinned || 0));
 
             keys.forEach(id => {
                 const li = document.createElement('li');
                 li.className = history-item ${chats[id].pinned ? 'pinned' : ''};
-                
                 const title = chats[id].title || 'New Conversation';
                 li.innerHTML = `
                     <span onclick="loadChat('${id}')">${title.substring(0, 18)}...</span>
@@ -105,7 +219,7 @@ HTML_TEMPLATE = """
             currentChatId = id;
             const chatBox = document.getElementById('chat-box');
             chatBox.innerHTML = '';
-            chats[id].messages.forEach(msg => appendMessage(msg.sender, msg.text, false));
+            chats[id].messages.forEach(msg => appendMessage(msg.sender, msg.text, msg.image, false));
         }
 
         function startNewChat() {
@@ -121,21 +235,31 @@ HTML_TEMPLATE = """
 
         function shareMessage(text) {
             if (navigator.share) {
-                navigator.share({ title: 'Ji Web Assistant Response', text: text });
+                navigator.share({ title: 'Ji Web Assistant', text: text });
             } else {
                 navigator.clipboard.writeText(text);
                 alert('Copied to clipboard!');
             }
         }
 
-        function appendMessage(sender, text, save = true) {
+        function appendMessage(sender, text, imageBase64 = null, save = true) {
             const chatBox = document.getElementById('chat-box');
             const msgDiv = document.createElement('div');
             msgDiv.className = message ${sender === 'user' ? 'user-msg' : 'bot-msg'};
             
-            let html = <div>${text}</div>;
+            let html = '';
+            if (imageBase64) {
+                html += <img src="data:image/jpeg;base64,${imageBase64}" class="chat-img" />;
+            }
+            html += <div>${text}</div>;
+            
             if (sender === 'bot') {
-                html += <button class="share-btn" onclick="shareMessage('${text.replace(/'/g, "\\'")}')">Share</button>;
+                const safeText = text.replace(/'/g, "\\'").replace(/\n/g, " ");
+                html += `
+                <div class="action-btns">
+                    <button class="action-btn" onclick="shareMessage('${safeText}')">Share</button>
+                    <button class="action-btn" onclick="speakText('${safeText}')">🔊 Listen</button>
+                </div>`;
             }
             msgDiv.innerHTML = html;
             
@@ -144,9 +268,9 @@ HTML_TEMPLATE = """
 
             if (save) {
                 if (!chats[currentChatId]) {
-                    chats[currentChatId] = { title: text, messages: [], pinned: false };
+                    chats[currentChatId] = { title: text || "Image Analysis", messages: [], pinned: false };
                 }
-                chats[currentChatId].messages.push({ sender, text });
+                chats[currentChatId].messages.push({ sender, text, image: imageBase64 });
                 saveChats();
             }
         }
@@ -154,16 +278,19 @@ HTML_TEMPLATE = """
         async function sendMessage() {
             const input = document.getElementById('userInput');
             const prompt = input.value.trim();
-            if (!prompt) return;
+            const imgData = selectedBase64Image;
 
-            appendMessage('user', prompt);
+            if (!prompt && !imgData) return;
+
+            appendMessage('user', prompt, imgData);
             input.value = '';
+            clearSelectedImage();
 
             try {
                 const response = await fetch('/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: prompt })
+                    body: JSON.stringify({ prompt: prompt, image: imgData })
                 });
                 const data = await response.json();
                 appendMessage('bot', data.response);
@@ -186,8 +313,22 @@ def home():
 def generate():
     data = request.get_json()
     prompt = data.get("prompt", "")
+    image_b64 = data.get("image", None)
+    
     try:
-        response = model.generate_content(prompt)
+        contents = []
+        if image_b64:
+            image_data = base64.b64decode(image_b64)
+            contents.append({
+                "mime_type": "image/jpeg",
+                "data": image_data
+            })
+        if prompt:
+            contents.append(prompt)
+        elif image_b64 and not prompt:
+            contents.append("Describe this image in detail.")
+
+        response = model.generate_content(contents)
         return jsonify({"response": response.text})
     except Exception as e:
         return jsonify({"response": f"Error: {str(e)}"}), 500
