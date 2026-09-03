@@ -1,12 +1,13 @@
 import os
-import base64
 from flask import Flask, jsonify, render_template_string, request
-from google import genai
+import google.generativeai as genai
 
 app = Flask(__name__)
 
-# Google GenAI Client setup
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+# Gemini API Key Setup
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -19,7 +20,6 @@ HTML_TEMPLATE = """
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { display: flex; height: 100vh; background-color: #1e1e2f; color: #fff; }
         
-        /* Sidebar */
         #sidebar { width: 260px; background: #141423; display: flex; flex-direction: column; padding: 15px; border-right: 1px solid #2d2d42; }
         #sidebar h2 { font-size: 1.1rem; margin-bottom: 15px; color: #a2a2c2; text-align: center; }
         .new-chat-btn { padding: 10px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 15px; }
@@ -30,7 +30,6 @@ HTML_TEMPLATE = """
         .history-item.pinned { border-left: 3px solid #f39c12; }
         .pin-btn { background: none; border: none; color: #f39c12; cursor: pointer; }
 
-        /* Main Chat Area */
         #main { flex: 1; display: flex; flex-direction: column; height: 100vh; }
         #header { padding: 15px; background: #181828; border-bottom: 1px solid #2d2d42; }
         #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
@@ -41,7 +40,6 @@ HTML_TEMPLATE = """
         .action-btns { display: flex; gap: 10px; margin-top: 8px; }
         .action-btn { font-size: 0.75rem; background: none; border: none; color: #8888b0; cursor: pointer; text-decoration: underline; }
 
-        /* Input Area */
         #input-container { padding: 15px; background: #181828; display: flex; gap: 10px; border-top: 1px solid #2d2d42; align-items: center; }
         textarea { flex: 1; height: 45px; background: #252538; border: 1px solid #3b3b54; border-radius: 6px; padding: 10px; color: white; resize: none; outline: none; }
         .icon-btn { width: 45px; height: 45px; background: #28a745; color: white; border: none; border-radius: 6px; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
@@ -86,13 +84,12 @@ HTML_TEMPLATE = """
     </div>
 
     <script>
-        var currentChatId = Date.now();
+        var currentChatId = Date.now().toString();
         var chats = JSON.parse(localStorage.getItem('ji_chats')) || {};
         var selectedBase64Image = null;
         var recognition = null;
         var isRecording = false;
 
-        // Voice Setup
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SpeechRec();
@@ -181,13 +178,15 @@ HTML_TEMPLATE = """
             currentChatId = id;
             var chatBox = document.getElementById('chat-box');
             chatBox.innerHTML = '';
-            chats[id].messages.forEach(function(msg) {
-                appendMsg(msg.sender, msg.text, msg.image, false);
-            });
+            if(chats[id] && chats[id].messages) {
+                chats[id].messages.forEach(function(msg) {
+                    appendMsg(msg.sender, msg.text, msg.image, false);
+                });
+            }
         }
 
         function startNewChat() {
-            currentChatId = Date.now();
+            currentChatId = Date.now().toString();
             document.getElementById('chat-box').innerHTML = '';
             clearImage();
             document.getElementById('userInput').value = '';
@@ -195,8 +194,10 @@ HTML_TEMPLATE = """
 
         function togglePin(id, e) {
             e.stopPropagation();
-            chats[id].pinned = !chats[id].pinned;
-            saveChats();
+            if(chats[id]) {
+                chats[id].pinned = !chats[id].pinned;
+                saveChats();
+            }
         }
 
         function shareMsg(text) {
@@ -221,16 +222,21 @@ HTML_TEMPLATE = """
             contentHtml += '<div>' + text + '</div>';
 
             if (sender === 'bot') {
-                var safeText = text.replace(/'/g, "\\'").replace(/\n/g, " ");
+                msgDiv.setAttribute('data-text', text);
                 contentHtml += '<div class="action-btns">' +
-                               '<button class="action-btn" onclick="shareMsg(\'' + safeText + '\')">Share</button>' +
-                               '<button class="action-btn" onclick="speakText(\'' + safeText + '\')">🔊 Listen</button>' +
+                               '<button class="action-btn share-btn">Share</button>' +
+                               '<button class="action-btn listen-btn">🔊 Listen</button>' +
                                '</div>';
             }
 
             msgDiv.innerHTML = contentHtml;
             chatBox.appendChild(msgDiv);
             chatBox.scrollTop = chatBox.scrollHeight;
+
+            if (sender === 'bot') {
+                msgDiv.querySelector('.share-btn').onclick = function() { shareMsg(text); };
+                msgDiv.querySelector('.listen-btn').onclick = function() { speakText(text); };
+            }
 
             if (save) {
                 if (!chats[currentChatId]) {
@@ -293,26 +299,23 @@ def generate():
     image_b64 = data.get("image", None)
     
     try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
         contents = []
+        
         if image_b64:
             contents.append({
-                "inline_data": {
-                    "mime_type": "image/jpeg",
-                    "data": image_b64
-                }
+                "mime_type": "image/jpeg",
+                "data": image_b64
             })
         if prompt:
             contents.append(prompt)
         elif image_b64 and not prompt:
             contents.append("Describe this image in detail.")
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=contents
-        )
+        response = model.generate_content(contents)
         return jsonify({"response": response.text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)
