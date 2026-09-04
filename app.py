@@ -1,7 +1,7 @@
 import os
 import base64
 from flask import Flask, jsonify, render_template_string, request
-from google import genai
+import google.genai as genai
 
 app = Flask(__name__)
 
