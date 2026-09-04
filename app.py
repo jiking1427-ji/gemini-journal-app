@@ -1,7 +1,7 @@
 import os
 from flask import Flask, render_template_string, request, jsonify
 
-app = Flask(_name_)
+app = Flask(__name__)
 
 # Complete HTML + JS Template
 HTML_TEMPLATE = """
@@ -114,6 +114,6 @@ def chat():
     reply = f"உங்கள் கேள்வி பெறப்பட்டது: '{user_msg}'. AI பதில் தயார்!"
     return jsonify({'reply': reply})
 
-if _name_ == '_main_':
+if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
