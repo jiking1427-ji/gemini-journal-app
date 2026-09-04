@@ -1,62 +1,61 @@
 import os
 from flask import Flask, jsonify, render_template_string, request
-from google import genai
+import google.generativeai as genai
 
 app = Flask(__name__)
 
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+# Configure API Key
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
-<html lang="ta">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ji Web Assistant</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: white; display: flex; flex-direction: column; height: 100vh; margin: 0; }
-        #header { padding: 15px; background: #1f1f1f; text-align: center; font-size: 1.2rem; font-weight: bold; border-bottom: 1px solid #333; }
-        #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        .msg { max-width: 80%; padding: 10px 14px; border-radius: 8px; line-height: 1.4; }
-        .user { align-self: flex-end; background: #007bff; color: white; }
-        .bot { align-self: flex-start; background: #2a2a2a; color: #e1e1e1; }
-        #input-box { padding: 15px; background: #1f1f1f; display: flex; gap: 10px; }
-        input { flex: 1; padding: 10px; border-radius: 5px; border: 1px solid #444; background: #2a2a2a; color: white; outline: none; }
-        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
-        button:hover { background: #0056b3; }
+        body { font-family: Arial, sans-serif; background-color: #f4f4f9; padding: 20px; display: flex; justify-content: center; }
+        .chat-container { width: 100%; max-width: 500px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #333; }
+        textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 14px; }
+        button { width: 100%; background-color: #28a745; color: white; border: none; padding: 12px; margin-top: 10px; border-radius: 5px; font-size: 16px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #218838; }
+        #response-box { margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 5px; min-height: 50px; white-space: pre-wrap; font-size: 14px; }
     </style>
 </head>
 <body>
-    <div id="header">Ji Web Assistant</div>
-    <div id="chat-box"></div>
-    <div id="input-box">
-        <input type="text" id="userInput" placeholder="Ask anything...">
-        <button onclick="send()">Send</button>
+    <div class="chat-container">
+        <h2>Ji Web Assistant</h2>
+        <textarea id="prompt" placeholder="Enter your prompt here..."></textarea>
+        <button onclick="generateAnswer()">Answer with Gemini</button>
+        <div id="response-box">Your answer will appear here...</div>
     </div>
 
     <script>
-        async function send() {
-            var input = document.getElementById('userInput');
-            var txt = input.value.trim();
-            if (!txt) return;
+        async function generateAnswer() {
+            var prompt = document.getElementById('prompt').value;
+            var responseBox = document.getElementById('response-box');
+            if(!prompt) return alert('Please enter a prompt!');
 
-            var box = document.getElementById('chat-box');
-            box.innerHTML += '<div class="msg user">' + txt + '</div>';
-            input.value = '';
-            box.scrollTop = box.scrollHeight;
+            responseBox.innerText = 'Generating answer...';
 
             try {
                 var res = await fetch('/generate', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({prompt: txt})
+                    body: JSON.stringify({prompt: prompt})
                 });
                 var data = await res.json();
-                box.innerHTML += '<div class="msg bot">' + (data.response || data.error) + '</div>';
+                if(data.response) {
+                    responseBox.innerText = data.response;
+                } else {
+                    responseBox.innerText = 'Error: ' + (data.error || 'Something went wrong');
+                }
             } catch(e) {
-                box.innerHTML += '<div class="msg bot">Error connecting to server.</div>';
+                responseBox.innerText = 'Error connecting to server.';
             }
-            box.scrollTop = box.scrollHeight;
         }
     </script>
 </body>
@@ -72,10 +71,7 @@ def generate():
     data = request.get_json() or {}
     prompt = data.get("prompt", "")
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
+        response = model.generate_content(prompt)
         return jsonify({"response": response.text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
