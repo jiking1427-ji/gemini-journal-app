@@ -6,7 +6,7 @@ app = Flask(__name__)
 
 # Configure API Key
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-3.0-flash')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
