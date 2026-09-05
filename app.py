@@ -1,81 +1,72 @@
+import streamlit as st
+from google import genai
+from google.genai import types
 import os
-from flask import Flask, jsonify, render_template_string, request
-import google.generativeai as genai
 
-app = Flask(__name__)
+# 1. Page Configuration
+st.set_page_config(
+    page_title="JI Web Assistant AI",
+    page_icon="🤖",
+    layout="wide"
+)
 
-# Configure API Key
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-1.5-pro')
+# Title & Description
+st.title("🤖 JI Web Assistant AI")
+st.caption("Your Personal AI Text Assistant")
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ji Web Assistant</title>
-    <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f4f9; padding: 20px; display: flex; justify-content: center; }
-        .chat-container { width: 100%; max-width: 500px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h2 { text-align: center; color: #333; }
-        textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 14px; }
-        button { width: 100%; background-color: #28a745; color: white; border: none; padding: 12px; margin-top: 10px; border-radius: 5px; font-size: 16px; cursor: pointer; font-weight: bold; }
-        button:hover { background-color: #218838; }
-        #response-box { margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 5px; min-height: 50px; white-space: pre-wrap; font-size: 14px; }
-    </style>
-</head>
-<body>
-    <div class="chat-container">
-        <h2>Ji Web Assistant</h2>
-        <textarea id="prompt" placeholder="Enter your prompt here..."></textarea>
-        <button onclick="generateAnswer()">Answer with Gemini</button>
-        <div id="response-box">Your answer will appear here...</div>
-    </div>
+# 2. API Key Setup
+api_key = os.getenv("GEMINI_API_KEY")
 
-    <script>
-        async function generateAnswer() {
-            var prompt = document.getElementById('prompt').value;
-            var responseBox = document.getElementById('response-box');
-            if(!prompt) return alert('Please enter a prompt!');
+if not api_key:
+    api_key = st.sidebar.text_input("Enter Gemini API Key", type="password")
 
-            responseBox.innerText = 'Generating answer...';
+if not api_key:
+    st.info("Please enter your Gemini API Key in the sidebar to continue.", icon="🔑")
+    st.stop()
 
-            try {
-                var res = await fetch('/generate', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({prompt: prompt})
-                });
-                var data = await res.json();
-                if(data.response) {
-                    responseBox.innerText = data.response;
-                } else {
-                    responseBox.innerText = 'Error: ' + (data.error || 'Something went wrong');
-                }
-            } catch(e) {
-                responseBox.innerText = 'Error connecting to server.';
-            }
-        }
-    </script>
-</body>
-</html>
-"""
+# Initialize Gemini Client
+client = genai.Client(api_key=api_key)
 
-@app.route("/")
-def home():
-    return render_template_string(HTML_TEMPLATE)
+# 3. Session State Initialization
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-@app.route("/generate", methods=["POST"])
-def generate():
-    data = request.get_json() or {}
-    prompt = data.get("prompt", "")
-    try:
-        response = model.generate_content(prompt)
-        return jsonify({"response": response.text})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+# Sidebar Controls
+st.sidebar.header("⚙️ Settings")
+clear_chat = st.sidebar.button("Clear Chat History")
+if clear_chat:
+    st.session_state.messages = []
+    st.rerun()
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+# 4. Display Chat History
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# 5. Input Option (Text Only)
+user_prompt = st.chat_input("Ask JI Web Assistant AI anything...")
+
+# 6. Processing Input and Generating Response
+if user_prompt:
+    # Save User message to history
+    st.session_state.messages.append({"role": "user", "content": user_prompt})
+    with st.chat_message("user"):
+        st.markdown(user_prompt)
+
+    # Generate Response from Gemini
+    with st.chat_message("assistant"):
+        with st.spinner("JI Web Assistant AI is thinking..."):
+            try:
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=user_prompt,
+                )
+                
+                bot_response = response.text
+                st.markdown(bot_response)
+                
+                # Save Assistant response to history
+                st.session_state.messages.append({"role": "assistant", "content": bot_response})
+
+            except Exception as e:
+                st.error(f"Error generating response: {e}")
